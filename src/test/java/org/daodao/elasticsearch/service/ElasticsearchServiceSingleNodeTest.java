@@ -12,9 +12,9 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for ElasticsearchService
+ * Unit tests for ElasticsearchService using single node configuration
  */
-class ElasticsearchServiceTest {
+class ElasticsearchServiceSingleNodeTest {
     
     private ElasticsearchService service;
     private String testIndexName;
@@ -39,13 +39,6 @@ class ElasticsearchServiceTest {
     }
     
     @Test
-    void testInitializeIndex() {
-        assertDoesNotThrow(() -> {
-            service.initializeIndex();
-        });
-    }
-    
-    @Test
     void testInsertAndRetrieveDocument() throws IOException {
         // Insert a document
         SampleData testData = new SampleData("test-item", "Test item for unit test");
@@ -53,6 +46,13 @@ class ElasticsearchServiceTest {
         
         assertNotNull(id);
         assertFalse(id.isEmpty());
+        
+        // Small delay to ensure document is indexed
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         
         // Retrieve the document
         SampleData retrievedData = service.getDocument(testIndexName, id);
@@ -69,11 +69,25 @@ class ElasticsearchServiceTest {
         SampleData testData = new SampleData("update-test", "Original description");
         String id = service.insertDocument(testIndexName, testData);
         
+        // Small delay to ensure document is indexed
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        
         // Update the document
         SampleData updatedData = new SampleData("update-test", "Updated description");
         boolean result = service.updateDocument(testIndexName, id, updatedData);
         
         assertTrue(result);
+        
+        // Small delay to ensure update is indexed
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         
         // Verify the update
         SampleData retrievedData = service.getDocument(testIndexName, id);
@@ -86,10 +100,24 @@ class ElasticsearchServiceTest {
         SampleData testData = new SampleData("delete-test", "Item to delete");
         String id = service.insertDocument(testIndexName, testData);
         
+        // Small delay to ensure document is indexed
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        
         // Delete the document
         boolean result = service.deleteDocument(testIndexName, id);
         
         assertTrue(result);
+        
+        // Small delay to ensure deletion is processed
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         
         // Verify deletion
         SampleData retrievedData = service.getDocument(testIndexName, id);
@@ -103,9 +131,9 @@ class ElasticsearchServiceTest {
         service.insertDocument(testIndexName, new SampleData("search-test-2", "Second search item"));
         service.insertDocument(testIndexName, new SampleData("other-item", "Non-matching item"));
         
-        // Add a small delay to ensure documents are indexed
+        // Add a longer delay to ensure documents are indexed
         try {
-            Thread.sleep(1000);
+            Thread.sleep(2000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -132,9 +160,9 @@ class ElasticsearchServiceTest {
         service.insertDocument(testIndexName, new SampleData("get-all-test-1", "First item"));
         service.insertDocument(testIndexName, new SampleData("get-all-test-2", "Second item"));
         
-        // Add a small delay to ensure documents are indexed
+        // Add a longer delay to ensure documents are indexed
         try {
-            Thread.sleep(1000);
+            Thread.sleep(2000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

@@ -12,6 +12,7 @@ public final class Constants {
     
     // Configuration property keys
     public static final String ELASTICSEARCH_HOSTS = "elasticsearch.hosts";
+    public static final String ELASTICSEARCH_CLUSTER_HOSTS = "elasticsearch.cluster.hosts";
     public static final String ELASTICSEARCH_SCHEME = "elasticsearch.scheme";
     public static final String ELASTICSEARCH_CONNECT_TIMEOUT = "elasticsearch.connectTimeout";
     public static final String ELASTICSEARCH_SOCKET_TIMEOUT = "elasticsearch.socketTimeout";

@@ -41,8 +41,25 @@ public class ElasticsearchClientConfig {
     private static RestHighLevelClient createClient() {
         Properties props = loadProperties();
         
-        String[] hosts = props.getProperty(Constants.ELASTICSEARCH_HOSTS, "")
-                .split(",");
+        // Check if we should use single node configuration
+        String useSingleNode = props.getProperty("elasticsearch.useSingleNode", "false");
+        String[] hosts;
+        
+        if ("true".equalsIgnoreCase(useSingleNode)) {
+            // Use single node configuration
+            hosts = props.getProperty(Constants.ELASTICSEARCH_HOSTS, "").split(",");
+            log.info("Using Elasticsearch single node hosts configuration");
+        } else {
+            // Check if cluster hosts are configured, otherwise fall back to regular hosts
+            String clusterHostsProperty = props.getProperty(Constants.ELASTICSEARCH_CLUSTER_HOSTS, "");
+            if (!clusterHostsProperty.trim().isEmpty()) {
+                hosts = clusterHostsProperty.split(",");
+                log.info("Using Elasticsearch cluster hosts configuration");
+            } else {
+                hosts = props.getProperty(Constants.ELASTICSEARCH_HOSTS, "").split(",");
+                log.info("Using Elasticsearch single node hosts configuration (fallback)");
+            }
+        }
         
         // Set default scheme
         String scheme = props.getProperty(Constants.ELASTICSEARCH_SCHEME, 

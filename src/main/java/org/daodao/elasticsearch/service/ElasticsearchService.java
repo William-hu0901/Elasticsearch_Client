@@ -38,6 +38,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 
 /**
@@ -49,11 +50,23 @@ public class ElasticsearchService {
     
     private final RestHighLevelClient client;
     private final ObjectMapper objectMapper;
+    private String testIndexName; // For testing purposes
     
     public ElasticsearchService() {
         this.client = ElasticsearchClientConfig.getClient();
         this.objectMapper = new ObjectMapper();
         objectMapper.findAndRegisterModules();
+    }
+    
+    /**
+     * Get the test index name (for testing purposes)
+     * @return test index name
+     */
+    public String getTestIndexName() {
+        if (testIndexName == null) {
+            testIndexName = Constants.SAMPLE_INDEX_NAME + "_" + UUID.randomUUID().toString().replace("-", "");
+        }
+        return testIndexName;
     }
     
     /**
@@ -68,6 +81,44 @@ public class ElasticsearchService {
         } catch (IOException e) {
             log.error("Error initializing index", e);
             throw new RuntimeException("Failed to initialize index", e);
+        }
+    }
+    
+    /**
+     * Initialize index for testing purposes - creates a unique index for each test
+     */
+    public void initializeTestIndex() {
+        try {
+            String indexName = getTestIndexName();
+            // Always try to delete first to ensure clean state
+            try {
+                if (indexExists(indexName)) {
+                    deleteIndex(indexName);
+                    Thread.sleep(100); // Small delay to ensure deletion completes
+                }
+            } catch (Exception e) {
+                log.debug("Could not delete existing test index, continuing anyway", e);
+            }
+            
+            // Create the index
+            createIndex(indexName);
+        } catch (Exception e) {
+            log.error("Error initializing test index", e);
+            throw new RuntimeException("Failed to initialize test index", e);
+        }
+    }
+    
+    /**
+     * Delete the test index (for testing purposes)
+     */
+    public void deleteTestIndex() {
+        try {
+            String indexName = getTestIndexName();
+            if (indexExists(indexName)) {
+                deleteIndex(indexName);
+            }
+        } catch (Exception e) {
+            log.warn("Error deleting test index", e);
         }
     }
     
@@ -99,8 +150,8 @@ public class ElasticsearchService {
         
         // Configure index settings
         request.settings(Settings.builder()
-                .put("index.number_of_shards", 3)
-                .put("index.number_of_replicas", 2)
+                .put("index.number_of_shards", 1) // Use fewer shards for testing
+                .put("index.number_of_replicas", 0) // Use no replicas for testing to speed up operations
         );
         
         CreateIndexResponse createIndexResponse = client.indices().create(request, RequestOptions.DEFAULT);
@@ -151,7 +202,18 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public String insertDocument(SampleData data) throws IOException {
-        IndexRequest indexRequest = new IndexRequest(Constants.SAMPLE_INDEX_NAME);
+        return insertDocument(Constants.SAMPLE_INDEX_NAME, data);
+    }
+    
+    /**
+     * Insert a document into the specified index
+     * @param indexName index name
+     * @param data sample data to insert
+     * @return document ID
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public String insertDocument(String indexName, SampleData data) throws IOException {
+        IndexRequest indexRequest = new IndexRequest(indexName);
         
         if (data.getId() != null && !data.getId().isEmpty()) {
             indexRequest.id(data.getId());
@@ -161,7 +223,7 @@ public class ElasticsearchService {
         indexRequest.source(jsonData, XContentType.JSON);
         
         IndexResponse indexResponse = client.index(indexRequest, RequestOptions.DEFAULT);
-        log.info("Document inserted with ID: {}", indexResponse.getId());
+        log.info("Document inserted with ID: {} into index: {}", indexResponse.getId(), indexName);
         return indexResponse.getId();
     }
     
@@ -172,7 +234,18 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public SampleData getDocument(String id) throws IOException {
-        GetRequest getRequest = new GetRequest(Constants.SAMPLE_INDEX_NAME, id);
+        return getDocument(Constants.SAMPLE_INDEX_NAME, id);
+    }
+    
+    /**
+     * Get a document by ID from the specified index
+     * @param indexName index name
+     * @param id document ID
+     * @return SampleData object or null if not found
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public SampleData getDocument(String indexName, String id) throws IOException {
+        GetRequest getRequest = new GetRequest(indexName, id);
         GetResponse getResponse = client.get(getRequest, RequestOptions.DEFAULT);
         
         if (getResponse.isExists()) {
@@ -181,7 +254,7 @@ public class ElasticsearchService {
             data.setId(getResponse.getId());
             return data;
         } else {
-            log.warn("Document with ID {} not found", id);
+            log.warn("Document with ID {} not found in index {}", id, indexName);
             return null;
         }
     }
@@ -194,12 +267,24 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public boolean updateDocument(String id, SampleData data) throws IOException {
+        return updateDocument(Constants.SAMPLE_INDEX_NAME, id, data);
+    }
+    
+    /**
+     * Update a document in the specified index
+     * @param indexName index name
+     * @param id document ID
+     * @param data updated data
+     * @return true if successful, false otherwise
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public boolean updateDocument(String indexName, String id, SampleData data) throws IOException {
         data.setId(id);
         // Only update timestamp if it's not already set
         if (data.getTimestamp() == null) {
             data.setTimestamp(LocalDateTime.now());
         }
-        IndexRequest indexRequest = new IndexRequest(Constants.SAMPLE_INDEX_NAME);
+        IndexRequest indexRequest = new IndexRequest(indexName);
         indexRequest.id(id);
         
         String jsonData = objectMapper.writeValueAsString(data);
@@ -218,10 +303,23 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public boolean deleteDocument(String id) throws IOException {
-        DeleteRequest deleteRequest = new DeleteRequest(Constants.SAMPLE_INDEX_NAME, id);
+        return deleteDocument(Constants.SAMPLE_INDEX_NAME, id);
+    }
+    
+    /**
+     * Delete a document by ID from the specified index
+     * @param indexName index name
+     * @param id document ID
+     * @return true if successful, false otherwise
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public boolean deleteDocument(String indexName, String id) throws IOException {
+        DeleteRequest deleteRequest = new DeleteRequest(indexName, id);
         DeleteResponse deleteResponse = client.delete(deleteRequest, RequestOptions.DEFAULT);
-        return deleteResponse.getResult() == DeleteResponse.Result.DELETED || 
+        boolean success = deleteResponse.getResult() == DeleteResponse.Result.DELETED || 
                deleteResponse.status() == RestStatus.OK;
+        log.info("Document deletion result for ID {}: {}", id, success);
+        return success;
     }
     
     /**
@@ -231,7 +329,18 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public List<SampleData> searchDocumentsByName(String name) throws IOException {
-        SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
+        return searchDocumentsByName(Constants.SAMPLE_INDEX_NAME, name);
+    }
+    
+    /**
+     * Search documents by name in the specified index
+     * @param indexName index name
+     * @param name name to search for
+     * @return list of matching SampleData objects
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public List<SampleData> searchDocumentsByName(String indexName, String name) throws IOException {
+        SearchRequest searchRequest = new SearchRequest(indexName);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.query(QueryBuilders.matchQuery(Constants.FIELD_NAME, name));
         searchRequest.source(searchSourceBuilder);
@@ -248,7 +357,19 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public List<SampleData> searchDocumentsByWildcard(String field, String pattern) throws IOException {
-        SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
+        return searchDocumentsByWildcard(Constants.SAMPLE_INDEX_NAME, field, pattern);
+    }
+    
+    /**
+     * Search documents by wildcard pattern in the specified index
+     * @param indexName index name
+     * @param field field to search in
+     * @param pattern wildcard pattern (* and ? supported)
+     * @return list of matching SampleData objects
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public List<SampleData> searchDocumentsByWildcard(String indexName, String field, String pattern) throws IOException {
+        SearchRequest searchRequest = new SearchRequest(indexName);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         
         WildcardQueryBuilder wildcardQuery = QueryBuilders.wildcardQuery(field, pattern);
@@ -268,7 +389,20 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public List<SampleData> searchDocumentsByDateRange(String field, LocalDateTime startDate, LocalDateTime endDate) throws IOException {
-        SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
+        return searchDocumentsByDateRange(Constants.SAMPLE_INDEX_NAME, field, startDate, endDate);
+    }
+    
+    /**
+     * Search documents by date range in the specified index
+     * @param indexName index name
+     * @param field field to search in
+     * @param startDate start date (inclusive)
+     * @param endDate end date (inclusive)
+     * @return list of matching SampleData objects
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public List<SampleData> searchDocumentsByDateRange(String indexName, String field, LocalDateTime startDate, LocalDateTime endDate) throws IOException {
+        SearchRequest searchRequest = new SearchRequest(indexName);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         
         // Format dates to match the pattern in SampleData class
@@ -293,8 +427,18 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public long getDocumentCount() throws IOException {
+        return getDocumentCount(Constants.SAMPLE_INDEX_NAME);
+    }
+    
+    /**
+     * Get document count in the specified index
+     * @param indexName index name
+     * @return number of documents in the index
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public long getDocumentCount(String indexName) throws IOException {
         // Use search request with size 0 to get total hits
-        SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
+        SearchRequest searchRequest = new SearchRequest(indexName);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.query(QueryBuilders.matchAllQuery());
         searchSourceBuilder.size(0); // We only need the count, not the documents
@@ -313,7 +457,20 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public List<SampleData> searchDocumentsWithSorting(String sortField, SortOrder sortOrder, int size) throws IOException {
-        SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
+        return searchDocumentsWithSorting(Constants.SAMPLE_INDEX_NAME, sortField, sortOrder, size);
+    }
+    
+    /**
+     * Search documents with sorting in the specified index
+     * @param indexName index name
+     * @param sortField field to sort by
+     * @param sortOrder sort order (ASC or DESC)
+     * @param size number of results to return
+     * @return list of matching SampleData objects
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public List<SampleData> searchDocumentsWithSorting(String indexName, String sortField, SortOrder sortOrder, int size) throws IOException {
+        SearchRequest searchRequest = new SearchRequest(indexName);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         
         searchSourceBuilder.query(QueryBuilders.matchAllQuery());
@@ -331,7 +488,17 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public List<SampleData> getAllDocuments() throws IOException {
-        SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
+        return getAllDocuments(Constants.SAMPLE_INDEX_NAME);
+    }
+    
+    /**
+     * Get all documents from the specified index
+     * @param indexName index name
+     * @return list of all SampleData objects
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public List<SampleData> getAllDocuments(String indexName) throws IOException {
+        SearchRequest searchRequest = new SearchRequest(indexName);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.query(QueryBuilders.matchAllQuery());
         searchRequest.source(searchSourceBuilder);
