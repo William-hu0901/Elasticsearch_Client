@@ -1,9 +1,10 @@
 package org.daodao.elasticsearch.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
-import org.daodao.elasticsearch.Constants;
-import org.daodao.elasticsearch.ElasticsearchClientConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.daodao.elasticsearch.util.Constants;
+import org.daodao.elasticsearch.config.ElasticsearchClientConfig;
 import org.daodao.elasticsearch.model.SampleData;
 import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
 import org.elasticsearch.action.admin.indices.create.CreateIndexResponse;
@@ -12,6 +13,7 @@ import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
+import org.elasticsearch.action.admin.indices.get.GetIndexRequest;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.search.SearchRequest;
@@ -24,21 +26,26 @@ import org.elasticsearch.client.core.CountResponse;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.index.query.RangeQueryBuilder;
+import org.elasticsearch.index.query.WildcardQueryBuilder;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.elasticsearch.search.sort.SortOrder;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 
 /**
  * Service class for Elasticsearch CRUD operations
  */
-@Slf4j
 public class ElasticsearchService {
+    
+    private static final Logger log = LoggerFactory.getLogger(ElasticsearchService.class);
     
     private final RestHighLevelClient client;
     private final ObjectMapper objectMapper;
@@ -71,11 +78,10 @@ public class ElasticsearchService {
      * @throws IOException if communication with Elasticsearch fails
      */
     public boolean indexExists(String indexName) throws IOException {
-        CountRequest countRequest = new CountRequest(indexName);
-        countRequest.query(QueryBuilders.matchAllQuery());
         try {
-            CountResponse countResponse = client.count(countRequest, RequestOptions.DEFAULT);
-            return true;
+            GetIndexRequest request = new GetIndexRequest();
+            request.indices(indexName);
+            return client.indices().exists(request, RequestOptions.DEFAULT);
         } catch (Exception e) {
             // If we get an exception, the index likely doesn't exist
             log.debug("Index {} does not exist or is inaccessible", indexName);
@@ -189,7 +195,10 @@ public class ElasticsearchService {
      */
     public boolean updateDocument(String id, SampleData data) throws IOException {
         data.setId(id);
-        data.setTimestamp(LocalDateTime.now());
+        // Only update timestamp if it's not already set
+        if (data.getTimestamp() == null) {
+            data.setTimestamp(LocalDateTime.now());
+        }
         IndexRequest indexRequest = new IndexRequest(Constants.SAMPLE_INDEX_NAME);
         indexRequest.id(id);
         
@@ -225,6 +234,91 @@ public class ElasticsearchService {
         SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.query(QueryBuilders.matchQuery(Constants.FIELD_NAME, name));
+        searchRequest.source(searchSourceBuilder);
+        
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        return parseSearchResults(searchResponse);
+    }
+    
+    /**
+     * Search documents by wildcard pattern
+     * @param field field to search in
+     * @param pattern wildcard pattern (* and ? supported)
+     * @return list of matching SampleData objects
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public List<SampleData> searchDocumentsByWildcard(String field, String pattern) throws IOException {
+        SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+        
+        WildcardQueryBuilder wildcardQuery = QueryBuilders.wildcardQuery(field, pattern);
+        searchSourceBuilder.query(wildcardQuery);
+        searchRequest.source(searchSourceBuilder);
+        
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        return parseSearchResults(searchResponse);
+    }
+    
+    /**
+     * Search documents by date range
+     * @param field field to search in
+     * @param startDate start date (inclusive)
+     * @param endDate end date (inclusive)
+     * @return list of matching SampleData objects
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public List<SampleData> searchDocumentsByDateRange(String field, LocalDateTime startDate, LocalDateTime endDate) throws IOException {
+        SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+        
+        // Format dates to match the pattern in SampleData class
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        String startDateStr = startDate.format(formatter);
+        String endDateStr = endDate.format(formatter);
+        
+        RangeQueryBuilder rangeQuery = QueryBuilders.rangeQuery(field)
+                .gte(startDateStr)
+                .lte(endDateStr);
+        
+        searchSourceBuilder.query(rangeQuery);
+        searchRequest.source(searchSourceBuilder);
+        
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        return parseSearchResults(searchResponse);
+    }
+    
+    /**
+     * Get document count in index
+     * @return number of documents in the index
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public long getDocumentCount() throws IOException {
+        // Use search request with size 0 to get total hits
+        SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+        searchSourceBuilder.query(QueryBuilders.matchAllQuery());
+        searchSourceBuilder.size(0); // We only need the count, not the documents
+        searchRequest.source(searchSourceBuilder);
+        
+        SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+        return searchResponse.getHits().getTotalHits().value;
+    }
+    
+    /**
+     * Search documents with sorting
+     * @param sortField field to sort by
+     * @param sortOrder sort order (ASC or DESC)
+     * @param size number of results to return
+     * @return list of matching SampleData objects
+     * @throws IOException if communication with Elasticsearch fails
+     */
+    public List<SampleData> searchDocumentsWithSorting(String sortField, SortOrder sortOrder, int size) throws IOException {
+        SearchRequest searchRequest = new SearchRequest(Constants.SAMPLE_INDEX_NAME);
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+        
+        searchSourceBuilder.query(QueryBuilders.matchAllQuery());
+        searchSourceBuilder.sort(sortField, sortOrder);
+        searchSourceBuilder.size(size);
         searchRequest.source(searchSourceBuilder);
         
         SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);

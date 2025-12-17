@@ -1,8 +1,10 @@
-package org.daodao.elasticsearch;
+package org.daodao.elasticsearch.config;
 
-import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHost;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import org.daodao.elasticsearch.util.Constants;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestClientBuilder;
 import org.elasticsearch.client.RestHighLevelClient;
@@ -15,8 +17,9 @@ import java.util.Properties;
 /**
  * Elasticsearch Client Configuration
  */
-@Slf4j
 public class ElasticsearchClientConfig {
+    
+    private static final Logger log = LoggerFactory.getLogger(ElasticsearchClientConfig.class);
     
     private static RestHighLevelClient client;
     

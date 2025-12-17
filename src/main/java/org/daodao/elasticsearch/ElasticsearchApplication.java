@@ -1,6 +1,7 @@
 package org.daodao.elasticsearch;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.daodao.elasticsearch.model.SampleData;
 import org.daodao.elasticsearch.service.ElasticsearchService;
 
@@ -10,8 +11,9 @@ import java.util.List;
 /**
  * Main application to demonstrate Elasticsearch operations
  */
-@Slf4j
 public class ElasticsearchApplication {
+    
+    private static final Logger log = LoggerFactory.getLogger(ElasticsearchApplication.class);
     
     public static void main(String[] args) {
         ElasticsearchService service = new ElasticsearchService();

@@ -48,7 +48,9 @@ src/
 └── test/
     └── java/
         └── org/daodao/elasticsearch/service/
-            └── ElasticsearchServiceTest.java
+            ├── ElasticsearchServiceTest.java
+            ├── ElasticsearchServiceAdvancedTest.java
+            └── TestSuite.java
 ```
 
 ## Configuration
@@ -85,6 +87,11 @@ elasticsearch.connectionRequestTimeout=5000
 Execute unit tests with Maven:
 ```bash
 mvn test
+```
+
+Or run the test suite directly:
+```bash
+mvn test -Dtest=org.daodao.elasticsearch.service.TestSuite
 ```
 
 ## Usage

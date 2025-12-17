@@ -1,13 +1,14 @@
-package org.daodao.elasticsearch;
-
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
+package org.daodao.elasticsearch.util;
 
 /**
  * Constants for the Elasticsearch client application
  */
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Constants {
+    
+    // Private constructor to prevent instantiation
+    private Constants() {
+        // This class should not be instantiated
+    }
     
     // Configuration property keys
     public static final String ELASTICSEARCH_HOSTS = "elasticsearch.hosts";

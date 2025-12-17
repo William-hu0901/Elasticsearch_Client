@@ -1,6 +1,6 @@
 package org.daodao.elasticsearch.service;
 
-import org.daodao.elasticsearch.Constants;
+import org.daodao.elasticsearch.util.Constants;
 import org.daodao.elasticsearch.model.SampleData;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
